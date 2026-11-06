@@ -31,8 +31,21 @@
     return anio + "-" + String((total % 12) + 1).padStart(2, "0");
   }
 
-  function mensualidades(compra, gracia) {
-    var primero = sumarMeses(compra.fecha.slice(0, 7), gracia);
+  function reglaValida(regla) {
+    var dia = function (n) { return Number.isInteger(n) && n >= 1 && n <= 31; };
+    return !!regla && dia(regla.corte) && dia(regla.limite);
+  }
+
+  function mesDelPrimerPago(fecha, regla, gracia) {
+    var mes = fecha.slice(0, 7);
+    if (!reglaValida(regla)) return sumarMeses(mes, gracia || 0);
+    var estado = parseInt(fecha.slice(8, 10), 10) <= regla.corte ? mes : sumarMeses(mes, 1);
+    return regla.limite > regla.corte ? estado : sumarMeses(estado, 1);
+  }
+
+  function mensualidades(compra, gracia, reglas) {
+    var regla = reglas && compra.tarjeta ? reglas[compra.tarjeta] : undefined;
+    var primero = mesDelPrimerPago(compra.fecha, regla, gracia);
     var base = Math.floor(compra.monto / compra.meses);
     var residuo = compra.monto - base * compra.meses;
     var lista = [];
@@ -42,10 +55,10 @@
     return lista;
   }
 
-  function calendario(compras, gracia) {
+  function calendario(compras, gracia, reglas) {
     var porMes = {};
     compras.forEach(function (c) {
-      mensualidades(c, gracia).forEach(function (m) { porMes[m.mes] = (porMes[m.mes] || 0) + m.monto; });
+      mensualidades(c, gracia, reglas).forEach(function (m) { porMes[m.mes] = (porMes[m.mes] || 0) + m.monto; });
     });
     return Object.keys(porMes).sort().map(function (mes) { return { mes: mes, total: porMes[mes] }; });
   }
@@ -86,12 +99,12 @@
       .map(function (g) { return { tarjeta: g.nombre, total: g.total }; });
   }
 
-  function calendarioPorTarjeta(compras, gracia) {
+  function calendarioPorTarjeta(compras, gracia, reglas) {
     var cargos = [];
     compras.forEach(function (c) {
-      mensualidades(c, gracia).forEach(function (m) { cargos.push({ mes: m.mes, tarjeta: c.tarjeta || "Sin tarjeta", monto: m.monto }); });
+      mensualidades(c, gracia, reglas).forEach(function (m) { cargos.push({ mes: m.mes, tarjeta: c.tarjeta || "Sin tarjeta", monto: m.monto }); });
     });
-    return calendario(compras, gracia).map(function (m) {
+    return calendario(compras, gracia, reglas).map(function (m) {
       var delMes = cargos.filter(function (x) { return x.mes === m.mes; });
       return {
         mes: m.mes,
@@ -102,13 +115,14 @@
   }
 
   function simular(compras, config, nueva) {
-    var hipotetica = { id: "simulada", fecha: nueva.fecha, tienda: "", concepto: "", para: "", monto: nueva.monto, meses: nueva.meses };
+    var hipotetica = { id: "simulada", fecha: nueva.fecha, tienda: "", concepto: "", para: "", monto: nueva.monto, meses: nueva.meses, tarjeta: nueva.tarjeta || "" };
     var todas = compras.concat([hipotetica]);
     var totalDespues = totalComprado(todas);
     return {
       totalDespues: totalDespues,
       semaforo: semaforo(totalDespues, config.presupuesto),
-      mesesExcedidos: mesesExcedidos(calendario(todas, config.gracia), config.topeMensual)
+      mesesExcedidos: mesesExcedidos(calendario(todas, config.gracia, config.tarjetas), config.topeMensual),
+      primerPago: mensualidades(hipotetica, config.gracia, config.tarjetas)[0].mes
     };
   }
 
@@ -133,7 +147,7 @@
 
   return {
     PLANES: PLANES, TARJETAS: TARJETAS, porTarjeta: porTarjeta, calendarioPorTarjeta: calendarioPorTarjeta, pesosACentavos: pesosACentavos, formatoMXN: formatoMXN, sumarMeses: sumarMeses,
-    mensualidades: mensualidades, calendario: calendario, totalComprado: totalComprado, semaforo: semaforo,
+    mensualidades: mensualidades, mesDelPrimerPago: mesDelPrimerPago, reglaValida: reglaValida, calendario: calendario, totalComprado: totalComprado, semaforo: semaforo,
     mesesExcedidos: mesesExcedidos, porPersona: porPersona, simular: simular, validarCompra: validarCompra,
     exportar: exportar, importar: importar
   };

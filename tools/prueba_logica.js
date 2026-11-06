@@ -107,4 +107,36 @@ assert.deepStrictEqual(porMes[0].tarjetas, [
 ], "diciembre desglosado por tarjeta");
 assert.strictEqual(porMes.reduce((s, m) => s + m.tarjetas.reduce((t, x) => t + x.total, 0), 0), 300001, "el desglose suma lo comprado");
 
+const compraEl = (fecha, extra) => ({ id: "z", fecha, tienda: "", concepto: "", para: "", monto: 90000, meses: 3, tarjeta: "BBVA", ...extra });
+const corteTemprano = { corte: 5, limite: 25 };
+const corteTardio = { corte: 25, limite: 15 };
+assert.strictEqual(L.mesDelPrimerPago("2026-11-03", corteTemprano), "2026-11", "antes del corte y limite despues del corte: paga ese mismo mes");
+assert.strictEqual(L.mesDelPrimerPago("2026-11-05", corteTemprano), "2026-11", "el dia del corte aun entra al estado actual");
+assert.strictEqual(L.mesDelPrimerPago("2026-11-06", corteTemprano), "2026-12", "pasado el corte entra al estado siguiente");
+assert.strictEqual(L.mesDelPrimerPago("2026-11-20", corteTardio), "2026-12", "limite antes del corte: paga el mes siguiente");
+assert.strictEqual(L.mesDelPrimerPago("2026-11-28", corteTardio), "2027-01", "pasado el corte y limite antes: dos meses despues");
+assert.strictEqual(L.mesDelPrimerPago("2026-12-30", corteTardio), "2027-02", "cruce de ano");
+assert.strictEqual(L.mesDelPrimerPago("2026-11-10", null, 1), "2026-12", "sin regla usa el desfase general");
+assert.strictEqual(L.mesDelPrimerPago("2026-11-10", undefined, 0), "2026-11");
+
+const reglas = { BBVA: corteTemprano };
+assert.deepStrictEqual(L.mensualidades(compraEl("2026-11-10"), 1, reglas).map((x) => x.mes), ["2026-12", "2027-01", "2027-02"]);
+assert.deepStrictEqual(L.mensualidades(compraEl("2026-11-03"), 1, reglas).map((x) => x.mes), ["2026-11", "2026-12", "2027-01"], "la regla de la tarjeta manda sobre el desfase general");
+assert.deepStrictEqual(L.mensualidades(compraEl("2026-11-03", { tarjeta: "Nu" }), 1, reglas).map((x) => x.mes), ["2026-12", "2027-01", "2027-02"], "tarjeta sin regla usa el desfase general");
+assert.deepStrictEqual(L.mensualidades(compraEl("2026-11-03", { tarjeta: undefined }), 0, reglas).map((x) => x.mes), ["2026-11", "2026-12", "2027-01"], "sin tarjeta usa el desfase general");
+assert.strictEqual(L.calendario([compraEl("2026-11-03")], 1, reglas)[0].mes, "2026-11");
+assert.strictEqual(L.calendarioPorTarjeta([compraEl("2026-11-03")], 1, reglas)[0].mes, "2026-11");
+
+assert.strictEqual(L.reglaValida({ corte: 5, limite: 25 }), true);
+assert.strictEqual(L.reglaValida({ corte: 0, limite: 25 }), false);
+assert.strictEqual(L.reglaValida({ corte: 5, limite: 32 }), false);
+assert.strictEqual(L.reglaValida({ corte: 5.5, limite: 20 }), false);
+assert.strictEqual(L.reglaValida({ corte: 5 }), false);
+assert.strictEqual(L.reglaValida(null), false);
+
+const cfgReglas = { presupuesto: 400000, topeMensual: 150000, gracia: 1, tarjetas: reglas };
+const simRegla = L.simular([], cfgReglas, { monto: 90000, meses: 1, fecha: "2026-11-03", tarjeta: "BBVA" });
+assert.deepStrictEqual(simRegla.mesesExcedidos, [], "simular acepta tarjeta y reglas");
+assert.strictEqual(simRegla.primerPago, "2026-11", "la simulacion informa el mes del primer pago");
+
 console.log("prueba_logica: todo en verde");

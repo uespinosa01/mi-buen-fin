@@ -15,7 +15,7 @@ Responde siempre en español. PWA para celular que lleva el control de compras d
 - Sin llamadas de red, sin librerías, sin `innerHTML` con texto del usuario (usar `h()`/`textContent`).
 - La app informa, no aconseja: nada de recomendaciones de inversión ni crédito.
 - Cambio de lógica: primero la prueba que falla, luego el código. Si una prueba falla, corrige el código, no la prueba.
-- Supuesto de MSI: la 1.ª mensualidad cae en el mes de la compra + `gracia` (0 o 1, ajuste del usuario). Es una aproximación a la fecha de corte real de la tarjeta.
+- Mes de la 1.ª mensualidad: si la tarjeta tiene regla (`config.tarjetas[nombre] = {corte, limite}`), una compra hasta el día de corte entra al estado de ese mes y, si el día límite es mayor que el corte, se paga ese mismo mes; si no, el siguiente. Sin regla, se usa el mes de la compra + `gracia` (0 o 1, ajuste general).
 - Commits en español `tipo: descripción`, uno por tarea. No hacer push sin pedirlo.
 - Nunca dejes una captura o dato real del usuario en el repo.
 

@@ -106,8 +106,21 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
     return anio + "-" + String((total % 12) + 1).padStart(2, "0");
   }
 
-  function mensualidades(compra, gracia) {
-    var primero = sumarMeses(compra.fecha.slice(0, 7), gracia);
+  function reglaValida(regla) {
+    var dia = function (n) { return Number.isInteger(n) && n >= 1 && n <= 31; };
+    return !!regla && dia(regla.corte) && dia(regla.limite);
+  }
+
+  function mesDelPrimerPago(fecha, regla, gracia) {
+    var mes = fecha.slice(0, 7);
+    if (!reglaValida(regla)) return sumarMeses(mes, gracia || 0);
+    var estado = parseInt(fecha.slice(8, 10), 10) <= regla.corte ? mes : sumarMeses(mes, 1);
+    return regla.limite > regla.corte ? estado : sumarMeses(estado, 1);
+  }
+
+  function mensualidades(compra, gracia, reglas) {
+    var regla = reglas && compra.tarjeta ? reglas[compra.tarjeta] : undefined;
+    var primero = mesDelPrimerPago(compra.fecha, regla, gracia);
     var base = Math.floor(compra.monto / compra.meses);
     var residuo = compra.monto - base * compra.meses;
     var lista = [];
@@ -117,10 +130,10 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
     return lista;
   }
 
-  function calendario(compras, gracia) {
+  function calendario(compras, gracia, reglas) {
     var porMes = {};
     compras.forEach(function (c) {
-      mensualidades(c, gracia).forEach(function (m) { porMes[m.mes] = (porMes[m.mes] || 0) + m.monto; });
+      mensualidades(c, gracia, reglas).forEach(function (m) { porMes[m.mes] = (porMes[m.mes] || 0) + m.monto; });
     });
     return Object.keys(porMes).sort().map(function (mes) { return { mes: mes, total: porMes[mes] }; });
   }
@@ -161,12 +174,12 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
       .map(function (g) { return { tarjeta: g.nombre, total: g.total }; });
   }
 
-  function calendarioPorTarjeta(compras, gracia) {
+  function calendarioPorTarjeta(compras, gracia, reglas) {
     var cargos = [];
     compras.forEach(function (c) {
-      mensualidades(c, gracia).forEach(function (m) { cargos.push({ mes: m.mes, tarjeta: c.tarjeta || "Sin tarjeta", monto: m.monto }); });
+      mensualidades(c, gracia, reglas).forEach(function (m) { cargos.push({ mes: m.mes, tarjeta: c.tarjeta || "Sin tarjeta", monto: m.monto }); });
     });
-    return calendario(compras, gracia).map(function (m) {
+    return calendario(compras, gracia, reglas).map(function (m) {
       var delMes = cargos.filter(function (x) { return x.mes === m.mes; });
       return {
         mes: m.mes,
@@ -177,13 +190,14 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
   }
 
   function simular(compras, config, nueva) {
-    var hipotetica = { id: "simulada", fecha: nueva.fecha, tienda: "", concepto: "", para: "", monto: nueva.monto, meses: nueva.meses };
+    var hipotetica = { id: "simulada", fecha: nueva.fecha, tienda: "", concepto: "", para: "", monto: nueva.monto, meses: nueva.meses, tarjeta: nueva.tarjeta || "" };
     var todas = compras.concat([hipotetica]);
     var totalDespues = totalComprado(todas);
     return {
       totalDespues: totalDespues,
       semaforo: semaforo(totalDespues, config.presupuesto),
-      mesesExcedidos: mesesExcedidos(calendario(todas, config.gracia), config.topeMensual)
+      mesesExcedidos: mesesExcedidos(calendario(todas, config.gracia, config.tarjetas), config.topeMensual),
+      primerPago: mensualidades(hipotetica, config.gracia, config.tarjetas)[0].mes
     };
   }
 
@@ -208,7 +222,7 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
 
   return {
     PLANES: PLANES, TARJETAS: TARJETAS, porTarjeta: porTarjeta, calendarioPorTarjeta: calendarioPorTarjeta, pesosACentavos: pesosACentavos, formatoMXN: formatoMXN, sumarMeses: sumarMeses,
-    mensualidades: mensualidades, calendario: calendario, totalComprado: totalComprado, semaforo: semaforo,
+    mensualidades: mensualidades, mesDelPrimerPago: mesDelPrimerPago, reglaValida: reglaValida, calendario: calendario, totalComprado: totalComprado, semaforo: semaforo,
     mesesExcedidos: mesesExcedidos, porPersona: porPersona, simular: simular, validarCompra: validarCompra,
     exportar: exportar, importar: importar
   };
@@ -221,8 +235,9 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
   var L = Logica;
   var CLAVE = "buenfin-v1";
   var MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+  var REGLABLES = L.TARJETAS.filter(function (n) { return n !== "Otra"; });
   var PESTANAS = [["resumen", "Resumen"], ["compras", "Compras"], ["meses", "Meses"], ["ajustes", "Ajustes"]];
-  var CONFIG_INICIAL = { presupuesto: null, topeMensual: null, gracia: 1 };
+  var CONFIG_INICIAL = { presupuesto: null, topeMensual: null, gracia: 1, tarjetas: {} };
   var TEXTO_NIVEL = {
     sin: "Define tu presupuesto en Ajustes para ver el semáforo.",
     verde: "Vas bien.",
@@ -298,7 +313,7 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
   }
 
   function tarjetaProximosMeses() {
-    var cal = L.calendario(estado.compras, estado.config.gracia);
+    var cal = L.calendario(estado.compras, estado.config.gracia, estado.config.tarjetas);
     if (!cal.length) return null;
     var excedidos = L.mesesExcedidos(cal, estado.config.topeMensual);
     return h("section", { class: "tarjeta" },
@@ -360,12 +375,12 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
   }
 
   function vistaMeses() {
-    var cal = L.calendario(estado.compras, estado.config.gracia);
+    var cal = L.calendario(estado.compras, estado.config.gracia, estado.config.tarjetas);
     if (!cal.length) return [h("p", { class: "vacio" }, "Aquí verás cuánto pagarás cada mes, incluidos los meses sin intereses.")];
     var tope = estado.config.topeMensual;
     var maximo = Math.max.apply(null, cal.map(function (m) { return m.total; }).concat(tope || 0));
     var excedidos = L.mesesExcedidos(cal, tope);
-    var desglose = L.calendarioPorTarjeta(estado.compras, estado.config.gracia);
+    var desglose = L.calendarioPorTarjeta(estado.compras, estado.config.gracia, estado.config.tarjetas);
     return cal.map(function (m, i) {
       var pasa = excedidos.indexOf(m.mes) >= 0;
       var barra = h("i"); barra.style.width = Math.round((m.total / maximo) * 100) + "%";
@@ -384,10 +399,26 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
       h("input", { id: id, inputmode: "decimal", placeholder: "Sin definir", value: valor ? (valor / 100).toFixed(2) : "" }));
   }
 
+  function leerReglas() {
+    var reglas = {};
+    for (var i = 0; i < REGLABLES.length; i++) {
+      var nombre = REGLABLES[i];
+      var corte = document.getElementById("a-corte-" + i).value.trim();
+      var limite = document.getElementById("a-limite-" + i).value.trim();
+      if (!corte && !limite) continue;
+      var regla = { corte: Number(corte), limite: Number(limite) };
+      if (!L.reglaValida(regla)) { avisar(nombre + ": escribe el corte y el límite como días del 1 al 31"); return null; }
+      reglas[nombre] = regla;
+    }
+    return reglas;
+  }
+
   function guardarAjustes() {
+    var reglas = leerReglas();
+    if (!reglas) return;
     var pres = L.pesosACentavos(document.getElementById("a-pres").value);
     var tope = L.pesosACentavos(document.getElementById("a-tope").value);
-    estado.config = { presupuesto: pres, topeMensual: tope, gracia: parseInt(document.getElementById("a-gracia").value, 10) };
+    estado.config = { presupuesto: pres, topeMensual: tope, gracia: parseInt(document.getElementById("a-gracia").value, 10), tarjetas: reglas };
     guardar();
     avisar("Ajustes guardados");
     render();
@@ -423,6 +454,15 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
     render();
   }
 
+  function filaTarjeta(nombre, i) {
+    var regla = estado.config.tarjetas[nombre] || {};
+    var dia = function (id, etiqueta, valor) {
+      return h("label", null, etiqueta, h("input", { id: id, type: "number", inputmode: "numeric", min: "1", max: "31", placeholder: "Día", value: valor || "" }));
+    };
+    return h("div", null, h("b", null, nombre),
+      h("div", { class: "acciones" }, dia("a-corte-" + i, "Día de corte", regla.corte), dia("a-limite-" + i, "Día límite de pago", regla.limite)));
+  }
+
   function vistaAjustes() {
     var respaldo = L.exportar(estado.compras, estado.config);
     var caja = h("textarea", { readonly: true, "aria-label": "Respaldo" }, respaldo);
@@ -430,10 +470,14 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
       h("section", { class: "tarjeta" }, h("h2", null, "Presupuesto"),
         campoDinero("a-pres", "Presupuesto total ($)", estado.config.presupuesto),
         campoDinero("a-tope", "Tope de pago por mes ($)", estado.config.topeMensual),
-        h("label", null, "¿Cuándo cae el primer pago?",
+        h("label", null, "Primer pago (tarjetas sin fechas de corte)",
           h("select", { id: "a-gracia" },
             h("option", { value: "0", selected: estado.config.gracia === 0 }, "El mismo mes de la compra"),
             h("option", { value: "1", selected: estado.config.gracia === 1 }, "El mes siguiente (por la fecha de corte)"))),
+        h("button", { class: "primario", type: "button", onclick: guardarAjustes }, "Guardar ajustes")),
+      h("section", { class: "tarjeta" }, h("h2", null, "Fechas de tus tarjetas"),
+        h("p", { class: "tenue" }, "Con el día de corte y el día límite de pago, cada mensualidad cae en el mes que de verdad la pagas. Déjalo vacío para usar la regla general de arriba."),
+        REGLABLES.map(filaTarjeta),
         h("button", { class: "primario", type: "button", onclick: guardarAjustes }, "Guardar ajustes")),
       h("section", { class: "tarjeta" }, h("h2", null, "Respaldo"),
         h("p", { class: "tenue" }, "Tus datos viven solo en este celular. Guarda un respaldo antes de borrar datos del navegador o cambiar de teléfono."),
@@ -467,10 +511,11 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
     var monto = L.pesosACentavos(borrador.monto);
     destino.replaceChildren();
     if (!monto) return;
-    var sim = L.simular(estado.compras, estado.config, { monto: monto, meses: borrador.meses, fecha: borrador.fecha });
+    var sim = L.simular(estado.compras, estado.config, { monto: monto, meses: borrador.meses, fecha: borrador.fecha, tarjeta: borrador.tarjeta });
     destino.className = "tarjeta nivel-" + sim.semaforo.nivel;
     destino.append(h("div", { class: "etiqueta" }, sim.semaforo.nivel === "sin" ? "Sin presupuesto definido" : "Quedarías en " + sim.semaforo.porcentaje + " % del presupuesto"));
     if (sim.semaforo.nivel !== "sin") destino.append(h("div", { class: "tenue" }, sim.semaforo.restante >= 0 ? "Te quedarían " + L.formatoMXN(sim.semaforo.restante) : "Te pasarías por " + L.formatoMXN(-sim.semaforo.restante)));
+    destino.append(h("div", { class: "tenue" }, "Primer pago en " + nombreMes(sim.primerPago)));
     if (sim.mesesExcedidos.length) destino.append(h("div", { class: "alerta" }, "Rebasaría tu tope mensual en: " + sim.mesesExcedidos.map(nombreMes).join(", ")));
   }
 
