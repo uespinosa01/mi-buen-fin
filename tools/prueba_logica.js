@@ -86,4 +86,25 @@ assert.strictEqual(L.validarCompra({ ...contado, monto: 0 }), false);
 assert.strictEqual(L.validarCompra({ ...contado, fecha: "14/11/2026" }), false);
 assert.strictEqual(L.validarCompra(contado), true);
 
+assert.deepStrictEqual(L.TARJETAS, ["BBVA", "Banorte", "Banamex", "Invex", "Didi", "Nu", "Liverpool", "Otra"]);
+const conTarjeta = [{ ...contado, tarjeta: "Liverpool" }, { ...msi3, tarjeta: "BBVA" }, { ...msi6, tarjeta: "Nu" }];
+assert.strictEqual(L.validarCompra(conTarjeta[0]), true);
+assert.strictEqual(L.validarCompra({ ...contado, tarjeta: "" }), true, "tarjeta vacia es valida");
+assert.strictEqual(L.validarCompra({ ...contado, tarjeta: "Visa" }), false, "tarjeta fuera de la lista");
+assert.strictEqual(L.validarCompra({ ...contado, tarjeta: 5 }), false);
+assert.strictEqual(L.importar(L.exportar([contado], config)).compras.length, 1, "respaldos sin tarjeta siguen validos");
+
+assert.deepStrictEqual(L.porTarjeta(conTarjeta), [
+  { tarjeta: "Nu", total: 100001 }, { tarjeta: "BBVA", total: 100000 }, { tarjeta: "Liverpool", total: 100000 },
+], "mayor a menor y luego por nombre");
+assert.strictEqual(L.porTarjeta([contado])[0].tarjeta, "Sin tarjeta");
+assert.deepStrictEqual(L.porTarjeta([]), []);
+
+const porMes = L.calendarioPorTarjeta(conTarjeta, 1);
+assert.deepStrictEqual(porMes.map((x) => x.mes), L.calendario(conTarjeta, 1).map((x) => x.mes), "mismos meses que el calendario");
+assert.deepStrictEqual(porMes[0].tarjetas, [
+  { tarjeta: "Liverpool", total: 100000 }, { tarjeta: "BBVA", total: 33333 }, { tarjeta: "Nu", total: 16666 },
+], "diciembre desglosado por tarjeta");
+assert.strictEqual(porMes.reduce((s, m) => s + m.tarjetas.reduce((t, x) => t + x.total, 0), 0), 300001, "el desglose suma lo comprado");
+
 console.log("prueba_logica: todo en verde");

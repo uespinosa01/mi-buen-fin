@@ -3,6 +3,7 @@
   else raiz.Logica = fabrica();
 })(typeof self !== "undefined" ? self : this, function () {
   var PLANES = [1, 3, 6, 9, 12, 18, 24];
+  var TARJETAS = ["BBVA", "Banorte", "Banamex", "Invex", "Didi", "Nu", "Liverpool", "Otra"];
   var VERSION_RESPALDO = 1;
   var UMBRAL_AMBAR = 0.8;
   var FECHA = /^\d{4}-\d{2}-\d{2}$/;
@@ -65,14 +66,39 @@
     return cal.filter(function (m) { return m.total > tope; }).map(function (m) { return m.mes; });
   }
 
-  function porPersona(compras) {
+  function agrupar(items, nombreDe, montoDe) {
     var acum = {};
-    compras.forEach(function (c) {
-      var nombre = (c.para || "").trim() || "Sin asignar";
-      acum[nombre] = (acum[nombre] || 0) + c.monto;
+    items.forEach(function (item) {
+      var nombre = nombreDe(item);
+      acum[nombre] = (acum[nombre] || 0) + montoDe(item);
     });
-    return Object.keys(acum).map(function (p) { return { para: p, total: acum[p] }; })
-      .sort(function (a, b) { return b.total - a.total || a.para.localeCompare(b.para, "es"); });
+    return Object.keys(acum).map(function (nombre) { return { nombre: nombre, total: acum[nombre] }; })
+      .sort(function (a, b) { return b.total - a.total || a.nombre.localeCompare(b.nombre, "es"); });
+  }
+
+  function porPersona(compras) {
+    return agrupar(compras, function (c) { return (c.para || "").trim() || "Sin asignar"; }, function (c) { return c.monto; })
+      .map(function (g) { return { para: g.nombre, total: g.total }; });
+  }
+
+  function porTarjeta(compras) {
+    return agrupar(compras, function (c) { return c.tarjeta || "Sin tarjeta"; }, function (c) { return c.monto; })
+      .map(function (g) { return { tarjeta: g.nombre, total: g.total }; });
+  }
+
+  function calendarioPorTarjeta(compras, gracia) {
+    var cargos = [];
+    compras.forEach(function (c) {
+      mensualidades(c, gracia).forEach(function (m) { cargos.push({ mes: m.mes, tarjeta: c.tarjeta || "Sin tarjeta", monto: m.monto }); });
+    });
+    return calendario(compras, gracia).map(function (m) {
+      var delMes = cargos.filter(function (x) { return x.mes === m.mes; });
+      return {
+        mes: m.mes,
+        tarjetas: agrupar(delMes, function (x) { return x.tarjeta; }, function (x) { return x.monto; })
+          .map(function (g) { return { tarjeta: g.nombre, total: g.total }; })
+      };
+    });
   }
 
   function simular(compras, config, nueva) {
@@ -89,7 +115,8 @@
   function validarCompra(c) {
     return !!c && typeof c.id === "string" && c.id !== "" && typeof c.fecha === "string" && FECHA.test(c.fecha) &&
       typeof c.tienda === "string" && typeof c.concepto === "string" && typeof c.para === "string" &&
-      Number.isInteger(c.monto) && c.monto > 0 && PLANES.indexOf(c.meses) >= 0;
+      Number.isInteger(c.monto) && c.monto > 0 && PLANES.indexOf(c.meses) >= 0 &&
+      (c.tarjeta === undefined || c.tarjeta === "" || TARJETAS.indexOf(c.tarjeta) >= 0);
   }
 
   function exportar(compras, config) {
@@ -105,7 +132,7 @@
   }
 
   return {
-    PLANES: PLANES, pesosACentavos: pesosACentavos, formatoMXN: formatoMXN, sumarMeses: sumarMeses,
+    PLANES: PLANES, TARJETAS: TARJETAS, porTarjeta: porTarjeta, calendarioPorTarjeta: calendarioPorTarjeta, pesosACentavos: pesosACentavos, formatoMXN: formatoMXN, sumarMeses: sumarMeses,
     mensualidades: mensualidades, calendario: calendario, totalComprado: totalComprado, semaforo: semaforo,
     mesesExcedidos: mesesExcedidos, porPersona: porPersona, simular: simular, validarCompra: validarCompra,
     exportar: exportar, importar: importar

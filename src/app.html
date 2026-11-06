@@ -179,11 +179,20 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
       }));
   }
 
+  function tarjetaTarjetas() {
+    var lista = L.porTarjeta(estado.compras);
+    if (!lista.length) return null;
+    return h("section", { class: "tarjeta" }, h("h2", null, "Por tarjeta"),
+      lista.map(function (t) {
+        return h("div", { class: "fila" }, h("span", null, t.tarjeta), h("b", null, L.formatoMXN(t.total)));
+      }));
+  }
+
   function vistaResumen() {
     if (!estado.compras.length) {
       return [tarjetaSemaforo(), h("p", { class: "vacio" }, "Aún no hay compras. Toca «+ Compra» cuando pagues algo.")];
     }
-    return [tarjetaSemaforo(), tarjetaProximosMeses(), tarjetaPersonas()];
+    return [tarjetaSemaforo(), tarjetaProximosMeses(), tarjetaTarjetas(), tarjetaPersonas()];
   }
 
   function detallePlan(c) {
@@ -205,7 +214,7 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
       return h("div", { class: "item" },
         h("b", null, c.concepto || c.tienda || "Compra"),
         h("button", { class: "borrar", type: "button", "aria-label": "Borrar compra", onclick: function () { borrarCompra(c.id); } }, "✕"),
-        h("span", { class: "tenue" }, [c.tienda, c.para && "para " + c.para, c.fecha, detallePlan(c)].filter(Boolean).join(" · ")),
+        h("span", { class: "tenue" }, [c.tarjeta, c.tienda, c.para && "para " + c.para, c.fecha, detallePlan(c)].filter(Boolean).join(" · ")),
         h("b", null, L.formatoMXN(c.monto)));
     });
   }
@@ -216,12 +225,16 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
     var tope = estado.config.topeMensual;
     var maximo = Math.max.apply(null, cal.map(function (m) { return m.total; }).concat(tope || 0));
     var excedidos = L.mesesExcedidos(cal, tope);
-    return cal.map(function (m) {
+    var desglose = L.calendarioPorTarjeta(estado.compras, estado.config.gracia);
+    return cal.map(function (m, i) {
       var pasa = excedidos.indexOf(m.mes) >= 0;
       var barra = h("i"); barra.style.width = Math.round((m.total / maximo) * 100) + "%";
       return h("div", { class: "tarjeta nivel-" + (pasa ? "rojo" : "verde") },
         h("div", { class: "fila" }, h("b", null, nombreMes(m.mes)), h("b", null, L.formatoMXN(m.total))),
         h("div", { class: "barra" }, barra),
+        desglose[i].tarjetas.map(function (t) {
+          return h("div", { class: "fila tenue" }, h("span", null, t.tarjeta), h("span", null, L.formatoMXN(t.total)));
+        }),
         pasa && h("div", { class: "etiqueta" }, "Pasa tu tope por " + L.formatoMXN(m.total - tope)));
     });
   }
@@ -322,13 +335,18 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
   }
 
   function abrirFormulario() {
-    var borrador = { monto: "", meses: 1, fecha: hoy() };
+    var borrador = { monto: "", meses: 1, fecha: hoy(), tarjeta: "" };
     var hoja = document.getElementById("hoja");
     var previa = h("section");
     var botonGuardar = h("button", { class: "primario", type: "button", disabled: true }, "Guardar compra");
     var planes = h("div", { class: "planes" });
+    var tarjetas = h("div", { class: "planes" });
     var campos = {};
     function actualizar() {
+      tarjetas.replaceChildren.apply(tarjetas, L.TARJETAS.map(function (nombre) {
+        var activa = nombre === borrador.tarjeta;
+        return h("button", { class: "plan", type: "button", "aria-pressed": String(activa), onclick: function () { borrador.tarjeta = activa ? "" : nombre; actualizar(); } }, nombre);
+      }));
       planes.replaceChildren.apply(planes, L.PLANES.map(function (n) {
         return h("button", { class: "plan", type: "button", "aria-pressed": String(n === borrador.meses), onclick: function () { borrador.meses = n; actualizar(); } }, n === 1 ? "Contado" : n + " MSI");
       }));
@@ -345,7 +363,7 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
       estado.compras = estado.compras.concat([{
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), fecha: campos.fecha.value || hoy(),
         tienda: texto("tienda"), concepto: texto("concepto"), para: texto("para"),
-        monto: L.pesosACentavos(borrador.monto), meses: borrador.meses
+        monto: L.pesosACentavos(borrador.monto), meses: borrador.meses, tarjeta: borrador.tarjeta
       }]);
       guardar();
       hoja.hidden = true;
@@ -356,6 +374,7 @@ textarea { padding: 10px 12px; min-height: 96px; font-size: 13px; font-family: u
       h("h1", null, "Nueva compra"),
       campo("monto", "Monto total ($)", { inputmode: "decimal", placeholder: "0.00", autocomplete: "off" }),
       h("div", null, h("div", { class: "tenue" }, "Forma de pago"), planes),
+      h("div", null, h("div", { class: "tenue" }, "Tarjeta con la que pagaste"), tarjetas),
       previa,
       campo("concepto", "¿Qué compraste?", { placeholder: "Bocina, juguete…", autocomplete: "off" }),
       campo("tienda", "Tienda", { placeholder: "Liverpool, Amazon…", autocomplete: "off" }),
