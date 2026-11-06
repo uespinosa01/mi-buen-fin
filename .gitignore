@@ -1,0 +1,6 @@
+salida/
+logs/
+__pycache__/
+.claude/worktrees/
+.claude/settings.local.json
+*.respaldo.json

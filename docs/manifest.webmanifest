@@ -1,0 +1,13 @@
+{
+  "name": "Mi Buen Fin",
+  "short_name": "Buen Fin",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#14181f",
+  "theme_color": "#14181f",
+  "icons": [
+    { "src": "icono.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
